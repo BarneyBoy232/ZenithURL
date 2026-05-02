@@ -35,6 +35,7 @@ export default function App() {
   const [isClaiming, setIsClaiming] = useState(false);
   const [pages, setPages] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [openDropdown, setOpenDropdown] = useState(null);
 
   useEffect(() => {
     if (!document.querySelector('script[src="https://cdn.tailwindcss.com"]')) {
@@ -133,11 +134,13 @@ export default function App() {
     }
   };
 
-  const handleStatusChange = async (domainName, newStatus) => {
+  const handleStatusChange = async (e, domainName, newStatus) => {
+    e.preventDefault(); // Stop link navigation
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'domains', domainName), {
         status: newStatus
       });
+      setOpenDropdown(null);
     } catch (err) {
       console.error("Failed to update status", err);
     }
@@ -146,6 +149,17 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900 via-slate-950 to-black text-slate-100 pb-32 font-sans selection:bg-indigo-500/30">
       
+      {/* Invisible overlay to close dropdown when clicking outside */}
+      {openDropdown && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={(e) => {
+            e.preventDefault();
+            setOpenDropdown(null);
+          }} 
+        />
+      )}
+
       {/* Decorative background elements */}
       <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none" />
       <div className="absolute top-20 left-1/4 w-72 h-72 bg-purple-500/10 rounded-full blur-[120px] pointer-events-none" />
@@ -238,13 +252,15 @@ export default function App() {
           <div className="grid gap-3">
             {pages.map((page) => {
               const status = STATUS_CONFIG[page.status] || STATUS_CONFIG.unfinished;
+              const isDropdownOpen = openDropdown === page.name;
+
               return (
                 <a 
                   key={page.id || page.name} 
                   href={`https://${page.name}.zenithurl.com`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 gap-4 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)]"
+                  className={`group flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 gap-4 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)] relative ${isDropdownOpen ? 'z-50' : 'z-0'}`}
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
@@ -257,25 +273,40 @@ export default function App() {
                   </div>
                   
                   <div className="flex items-center gap-3 sm:ml-auto">
-                    {/* The Badge acts as a dropdown menu wrapper */}
-                    <div 
-                      className="relative"
-                      onClick={(e) => e.preventDefault()} // Prevents the <a> tag from triggering when changing status
-                    >
-                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${status.bg} border ${status.border} shrink-0 cursor-pointer hover:brightness-125 transition-all`}>
+                    {/* Custom Dropdown Container */}
+                    <div className="relative z-50">
+                      <div 
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setOpenDropdown(isDropdownOpen ? null : page.name);
+                        }}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${status.bg} border ${status.border} shrink-0 cursor-pointer hover:brightness-125 transition-all`}
+                      >
                         <div className={`w-2 h-2 rounded-full ${status.color} shadow-[0_0_8px_currentColor]`} />
                         <span className={`text-xs font-bold uppercase tracking-wider ${status.text}`}>{status.label}</span>
                       </div>
                       
-                      <select
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        value={page.status || 'unfinished'}
-                        onChange={(e) => handleStatusChange(page.name, e.target.value)}
-                      >
-                        <option value="finished">Finished</option>
-                        <option value="unfinished">Unfinished</option>
-                        <option value="on_hold">On Hold</option>
-                      </select>
+                      {/* Custom Dropdown Menu */}
+                      {isDropdownOpen && (
+                        <div className="absolute right-0 top-full mt-2 w-40 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+                          <div className="p-1">
+                            {Object.entries(STATUS_CONFIG).map(([statusKey, config]) => (
+                              <button
+                                key={statusKey}
+                                onClick={(e) => handleStatusChange(e, page.name, statusKey)}
+                                className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors ${
+                                  page.status === statusKey 
+                                    ? 'bg-white/10 text-white' 
+                                    : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                                }`}
+                              >
+                                <div className={`w-2 h-2 rounded-full ${config.color}`} />
+                                <span className="font-medium">{config.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </a>
