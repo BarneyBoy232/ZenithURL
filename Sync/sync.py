@@ -2,45 +2,65 @@ import requests
 import firebase_admin
 from firebase_admin import credentials, firestore
 import time
+import os
 
-# 1. Connect to your Firebase Database
-# You download this JSON file from your Firebase Project Settings -> Service Accounts
-cred = credentials.Certificate("firebase-service-account.json")
-firebase_admin.initialize_app(cred)
+# 1. Dynamically find the JSON file inside the exact same folder as this script
+current_dir = os.path.dirname(__file__)
+service_account_path = os.path.join(current_dir, "zenithurl-e9909-firebase-adminsdk-fbsvc-2eeddf368a.json")
+
+if not firebase_admin._apps:
+    cred = credentials.Certificate(service_account_path)
+    firebase_admin.initialize_app(cred)
+
 db = firestore.client()
 
-# Replace this with the App ID from your React code
-APP_ID = "default-app-id" 
+# This must match the App ID in your React App.jsx
+APP_ID = "zenithurl" 
 DOMAINS_REF = db.collection('artifacts').document(APP_ID).collection('public').document('data').collection('domains')
 
 def get_all_subdomains():
     """
-    This asks your DNS provider (e.g., Vercel, Cloudflare, AWS) for the master list.
-    Example below uses the Vercel API.
+    Asks Cloudflare for the master list of DNS records.
     """
-    VERCEL_API_TOKEN = "your_vercel_api_token"
-    PROJECT_ID = "your_vercel_project_id"
+    CLOUDFLARE_API_TOKEN = "cfut_N9GuNPVLJ2pgZs1Ojf302MEZmTp9DNlwPB9Bn2tu9f77f398"
+    ZONE_ID = "cb957de4a36dcefa4904df15bb79f410" 
     
-    headers = {"Authorization": f"Bearer {VERCEL_API_TOKEN}"}
-    response = requests.get(f"https://api.vercel.com/v9/projects/{PROJECT_ID}/domains", headers=headers)
+    headers = {
+        "Authorization": f"Bearer {CLOUDFLARE_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    
+    # Cloudflare API to list DNS records
+    response = requests.get(
+        f"https://api.cloudflare.com/client/v4/zones/{ZONE_ID}/dns_records", 
+        headers=headers,
+        params={"per_page": 100}
+    )
     
     if response.status_code == 200:
-        return [domain['name'] for domain in response.json()['domains']]
+        records = response.json().get('result', [])
+        # We only care about A and CNAME records that point to subdomains
+        return [record['name'] for record in records if record['type'] in ['A', 'CNAME']]
+    
+    print(f"Failed to fetch from Cloudflare: {response.text}")
     return []
 
 def sync_to_database():
-    print("Fetching master list from DNS provider...")
+    print("Fetching master list from Cloudflare...")
     active_domains = get_all_subdomains()
     
-    print(f"Found {len(active_domains)} active domains. Syncing to Firebase...")
+    if not active_domains:
+        print("No domains found or failed to fetch.")
+        return
+
+    print(f"Found {len(active_domains)} active records. Syncing to Firebase...")
     
-    # Push everything to Firebase (React will update live instantly)
     for domain in active_domains:
-        # Strip out the main domain to just get the 'xx' part
-        subdomain = domain.replace(".zenithurl.com", "") 
+        # Clean the name (e.g., 'test.zenithurl.com' -> 'test')
+        subdomain = domain.replace(".zenithurl.com", "").lower() 
         
-        # Skip the main domain itself
-        if subdomain == "zenithurl.com":
+        # Skip root domain or empty strings
+        if subdomain == "zenithurl.com" or not subdomain or subdomain == domain:
             continue
             
         doc_ref = DOMAINS_REF.document(subdomain)
@@ -53,5 +73,4 @@ def sync_to_database():
         print(f"Synced: {subdomain}")
 
 if __name__ == "__main__":
-    # Run this once, or set it to run on a loop every 5 minutes!
     sync_to_database()
