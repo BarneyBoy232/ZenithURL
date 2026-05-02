@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, CheckCircle2, XCircle, ArrowRight, Check, Clock, Loader2, PlusCircle } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, ArrowRight, Check, Clock, Loader2, PlusCircle, Globe, Sparkles } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCqc2f3mxV9tIqaSimur4mGOsHIxsWNN8A",
@@ -21,9 +21,9 @@ const db = getFirestore(app);
 const appId = 'zenithurl'; 
 
 const STATUS_CONFIG = {
-  finished: { icon: Check, color: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50', label: 'Finished' },
-  unfinished: { icon: XCircle, color: 'bg-rose-500', text: 'text-rose-700', bg: 'bg-rose-50', label: 'Unfinished' },
-  on_hold: { icon: Clock, color: 'bg-amber-500', text: 'text-amber-700', bg: 'bg-amber-50', label: 'On Hold' }
+  finished: { icon: Check, color: 'bg-emerald-400', text: 'text-emerald-300', bg: 'bg-emerald-950/50', border: 'border-emerald-800/50', label: 'Finished' },
+  unfinished: { icon: XCircle, color: 'bg-rose-400', text: 'text-rose-300', bg: 'bg-rose-950/50', border: 'border-rose-800/50', label: 'Unfinished' },
+  on_hold: { icon: Clock, color: 'bg-amber-400', text: 'text-amber-300', bg: 'bg-amber-950/50', border: 'border-amber-800/50', label: 'On Hold' }
 };
 
 export default function App() {
@@ -62,7 +62,7 @@ export default function App() {
     const domainsRef = collection(db, 'artifacts', appId, 'public', 'data', 'domains');
     const unsubscribe = onSnapshot(domainsRef, (snapshot) => {
       const fetchedPages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const filteredPages = fetchedPages.filter(p => !p.name.includes('.'));
+      const filteredPages = fetchedPages.filter(p => !p.name.includes('.') && p.name !== 'www');
       setPages(filteredPages);
       setIsLoading(false);
     }, () => setIsLoading(false));
@@ -133,23 +133,46 @@ export default function App() {
     }
   };
 
+  const handleStatusChange = async (domainName, newStatus) => {
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'domains', domainName), {
+        status: newStatus
+      });
+    } catch (err) {
+      console.error("Failed to update status", err);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[#fafafa] text-neutral-900 pb-32">
-      <header className="pt-16 pb-12 px-6 flex flex-col items-center text-center">
+    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900 via-slate-950 to-black text-slate-100 pb-32 font-sans selection:bg-indigo-500/30">
+      
+      {/* Decorative background elements */}
+      <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none" />
+      <div className="absolute top-20 left-1/4 w-72 h-72 bg-purple-500/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-40 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
+
+      <header className="pt-24 pb-16 px-6 flex flex-col items-center text-center relative z-10">
+        <div className="flex items-center gap-3 mb-8">
+          <Sparkles className="w-8 h-8 text-indigo-400" />
+          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-300 via-purple-300 to-indigo-300">
+            ZenithURL
+          </h1>
+        </div>
+
         <form onSubmit={handleSearch} className="w-full max-w-xl relative">
-          <div className="relative flex items-center w-full h-16 rounded-2xl bg-white border border-neutral-200 shadow-sm focus-within:border-neutral-400 transition-all">
-            <Search className="w-6 h-6 text-neutral-400 absolute left-5" />
+          <div className="relative flex items-center w-full h-16 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl focus-within:border-indigo-400/50 focus-within:bg-white/10 transition-all">
+            <Search className="w-6 h-6 text-indigo-300/50 absolute left-5" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => {setSearchQuery(e.target.value); setSearchResult(null);}}
               placeholder="Search domains..."
-              className="w-full h-full pl-14 pr-32 bg-transparent text-lg outline-none"
+              className="w-full h-full pl-14 pr-32 bg-transparent text-lg text-white placeholder:text-slate-500 outline-none"
             />
             <button 
               type="submit"
               disabled={isSearching || !searchQuery}
-              className="absolute right-2 h-12 px-6 bg-neutral-900 text-white font-medium rounded-xl hover:bg-neutral-800 disabled:opacity-50 transition-colors flex items-center justify-center min-w-[100px]"
+              className="absolute right-2 h-12 px-6 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl disabled:opacity-50 transition-all flex items-center justify-center min-w-[100px] shadow-[0_0_20px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)]"
             >
               {isSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Check'}
             </button>
@@ -158,20 +181,20 @@ export default function App() {
 
         <div className="mt-6 w-full max-w-xl flex flex-col items-center">
           {searchResult === 'taken' && (
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-rose-50 text-rose-700 font-medium">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-300 font-medium backdrop-blur-md">
               <XCircle className="w-5 h-5" />
               {searchQuery}.zenithurl.com is taken
             </div>
           )}
           {searchResult === 'success' && (
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 text-emerald-700 font-medium">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-medium backdrop-blur-md">
               <CheckCircle2 className="w-5 h-5" />
               Claimed successfully!
             </div>
           )}
           {searchResult === 'available' && (
-            <div className="w-full">
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-50 text-emerald-700 font-medium mb-4">
+            <div className="w-full animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-medium mb-4 backdrop-blur-md">
                 <CheckCircle2 className="w-5 h-5" />
                 {searchQuery}.zenithurl.com is available!
               </div>
@@ -182,12 +205,12 @@ export default function App() {
                   value={targetUrl}
                   onChange={(e) => setTargetUrl(e.target.value)}
                   placeholder="https://your-site.com"
-                  className="flex-1 h-12 px-4 rounded-xl border border-neutral-200 outline-none focus:border-neutral-400"
+                  className="flex-1 h-12 px-4 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 outline-none focus:border-indigo-400/50 focus:bg-white/10 backdrop-blur-md transition-all"
                 />
                 <button
                   type="submit"
                   disabled={isClaiming || !targetUrl}
-                  className="h-12 px-6 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="h-12 px-6 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(5,150,105,0.3)] transition-all"
                 >
                   {isClaiming ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlusCircle className="w-4 h-4" />}
                   Claim
@@ -198,36 +221,64 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-6">
-        <div className="flex items-center justify-between mb-6 border-b border-neutral-200 pb-4">
-          <h2 className="text-xl font-semibold text-neutral-800">Directory</h2>
-          <span className="text-sm text-neutral-500">{isLoading ? 'Loading...' : `${pages.length} pages`}</span>
+      <main className="max-w-3xl mx-auto px-6 relative z-10">
+        <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
+          <h2 className="text-xl font-semibold text-slate-200 flex items-center gap-2">
+            <Globe className="w-5 h-5 text-indigo-400" />
+            Active Directory
+          </h2>
+          <span className="text-sm text-slate-500 bg-white/5 px-3 py-1 rounded-full border border-white/5">
+            {isLoading ? 'Loading...' : `${pages.length} nodes`}
+          </span>
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-neutral-400" /></div>
+          <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="grid gap-3">
             {pages.map((page) => {
               const status = STATUS_CONFIG[page.status] || STATUS_CONFIG.unfinished;
               return (
-                <div key={page.id || page.name} className="flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white rounded-2xl border border-neutral-100 shadow-sm hover:shadow-md transition-all gap-4">
+                <a 
+                  key={page.id || page.name} 
+                  href={`https://${page.name}.zenithurl.com`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 gap-4 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)]"
+                >
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-neutral-50 flex items-center justify-center border border-neutral-100 text-neutral-400 shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
                       <ArrowRight className="w-4 h-4 -rotate-45" />
                     </div>
                     <div className="overflow-hidden">
-                      <h3 className="font-semibold text-lg text-neutral-900 truncate">{page.name}</h3>
-                      <p className="text-sm text-neutral-400 truncate">{page.name}.zenithurl.com</p>
+                      <h3 className="font-semibold text-lg text-slate-200 truncate group-hover:text-white transition-colors">{page.name}</h3>
+                      <p className="text-sm text-slate-500 truncate">{page.name}.zenithurl.com</p>
                     </div>
                   </div>
+                  
                   <div className="flex items-center gap-3 sm:ml-auto">
-                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${status.bg} shrink-0`}>
-                      <div className={`w-2 h-2 rounded-full ${status.color}`} />
-                      <span className={`text-xs font-bold uppercase tracking-wider ${status.text}`}>{status.label}</span>
+                    {/* The Badge acts as a dropdown menu wrapper */}
+                    <div 
+                      className="relative"
+                      onClick={(e) => e.preventDefault()} // Prevents the <a> tag from triggering when changing status
+                    >
+                      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full ${status.bg} border ${status.border} shrink-0 cursor-pointer hover:brightness-125 transition-all`}>
+                        <div className={`w-2 h-2 rounded-full ${status.color} shadow-[0_0_8px_currentColor]`} />
+                        <span className={`text-xs font-bold uppercase tracking-wider ${status.text}`}>{status.label}</span>
+                      </div>
+                      
+                      <select
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        value={page.status || 'unfinished'}
+                        onChange={(e) => handleStatusChange(page.name, e.target.value)}
+                      >
+                        <option value="finished">Finished</option>
+                        <option value="unfinished">Unfinished</option>
+                        <option value="on_hold">On Hold</option>
+                      </select>
                     </div>
                   </div>
-                </div>
+                </a>
               );
             })}
           </div>

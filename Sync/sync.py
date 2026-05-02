@@ -46,7 +46,7 @@ def sync_to_database():
 
     for domain in active_domains:
         subdomain = domain.replace(".zenithurl.com", "").lower() 
-        if subdomain == "zenithurl.com" or not subdomain or subdomain == domain:
+        if subdomain in ["zenithurl.com", "www"] or not subdomain or subdomain == domain:
             continue
             
         doc_ref = DOMAINS_REF.document(subdomain)
