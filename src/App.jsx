@@ -1,16 +1,24 @@
-/* global __firebase_config, __app_id, __initial_auth_token */
 import React, { useState, useEffect } from 'react';
 import { Search, CheckCircle2, XCircle, ArrowRight, Check, Clock, Loader2, PlusCircle } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 
-// --- FIREBASE SETUP ---
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const firebaseConfig = {
+  apiKey: "AIzaSyCqc2f3mxV9tIqaSimur4mGOsHIxsWNN8A",
+  authDomain: "zenithurl-e9909.firebaseapp.com",
+  projectId: "zenithurl-e9909",
+  storageBucket: "zenithurl-e9909.firebasestorage.app",
+  messagingSenderId: "7083366833",
+  appId: "1:7083366833:web:0a4f9837b24de6b1f30590",
+  measurementId: "G-P20NWPE2ZZ"
+};
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+const appId = 'zenithurl'; 
 
 const STATUS_CONFIG = {
   finished: { icon: Check, color: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50', label: 'Finished' },
@@ -39,11 +47,7 @@ export default function App() {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        await signInAnonymously(auth);
       } catch (err) {
         console.error("Auth error:", err);
       }
