@@ -4,7 +4,6 @@ from firebase_admin import credentials, firestore
 import time
 import os
 
-# 1. Dynamically find the JSON file inside the exact same folder as this script
 current_dir = os.path.dirname(__file__)
 service_account_path = os.path.join(current_dir, "firebase-credentials.json")
 
@@ -13,8 +12,6 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
-
-# Hardcoded to "zenithurl" to match App.jsx
 APP_ID = "zenithurl" 
 DOMAINS_REF = db.collection('artifacts').document(APP_ID).collection('public').document('data').collection('domains')
 
@@ -50,13 +47,20 @@ def sync_to_database():
             continue
             
         doc_ref = DOMAINS_REF.document(subdomain)
-        doc_ref.set({
-            "name": subdomain,
-            "status": "finished",
-            "autoDetected": True,
-            "lastSeen": int(time.time() * 1000)
-        }, merge=True)
-        print(f"Synced: {subdomain}")
+        doc = doc_ref.get()
+        
+        if doc.exists:
+            # Only update lastSeen so we don't overwrite manual status changes
+            doc_ref.update({"lastSeen": int(time.time() * 1000)})
+        else:
+            # Create brand new entries as finished
+            doc_ref.set({
+                "name": subdomain,
+                "status": "finished",
+                "autoDetected": True,
+                "lastSeen": int(time.time() * 1000)
+            })
+            print(f"Synced new domain: {subdomain}")
 
 if __name__ == "__main__":
     sync_to_database()
