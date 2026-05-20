@@ -36,24 +36,26 @@ def get_all_subdomains():
     return []
 
 def sync_to_database():
-    active_domains = get_all_subdomains()
-    if not active_domains: 
-        print("No domains found.")
+    active_domains_raw = get_all_subdomains()
+    if not active_domains_raw: 
+        print("No domains found in Cloudflare.")
         return
 
-    for domain in active_domains:
-        subdomain = domain.replace(".zenithurl.com", "").lower() 
-        if subdomain in ["zenithurl.com", "www"] or not subdomain or subdomain == domain:
-            continue
-            
+    # 1. Clean up Cloudflare list to match Firebase IDs
+    active_subdomains = []
+    for domain in active_domains_raw:
+        subdomain = domain.replace(".zenithurl.com", "").lower()
+        if subdomain not in ["zenithurl.com", "www"] and subdomain and subdomain != domain:
+            active_subdomains.append(subdomain)
+
+    # 2. Add/Update active domains
+    for subdomain in active_subdomains:
         doc_ref = DOMAINS_REF.document(subdomain)
         doc = doc_ref.get()
         
         if doc.exists:
-            # Only update lastSeen so we don't overwrite manual status changes
             doc_ref.update({"lastSeen": int(time.time() * 1000)})
         else:
-            # Create brand new entries as finished
             doc_ref.set({
                 "name": subdomain,
                 "status": "finished",
@@ -61,6 +63,13 @@ def sync_to_database():
                 "lastSeen": int(time.time() * 1000)
             })
             print(f"Synced new domain: {subdomain}")
+
+    # 3. Clean up deleted domains (Remove from Firebase if not in Cloudflare)
+    firebase_docs = DOMAINS_REF.stream()
+    for doc in firebase_docs:
+        if doc.id not in active_subdomains:
+            print(f"Removing old domain: {doc.id}")
+            DOMAINS_REF.document(doc.id).delete()
 
 if __name__ == "__main__":
     sync_to_database()
