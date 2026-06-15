@@ -16,7 +16,7 @@ APP_ID = "zenithurl"
 DOMAINS_REF = db.collection('artifacts').document(APP_ID).collection('public').document('data').collection('domains')
 
 def get_all_subdomains():
-    CLOUDFLARE_API_TOKEN = "cfut_N9GuNPVLJ2pgZs1Ojf302MEZmTp9DNlwPB9Bn2tu9f77f398"
+    CLOUDFLARE_API_TOKEN = "cfut_iikhBI7n60IoVwM2Zu4qScKWbBJx7PYnYtLs0Zcha834a9ac"
     ZONE_ID = "cb957de4a36dcefa4904df15bb79f410" 
     
     headers = {
@@ -45,7 +45,7 @@ def sync_to_database():
     active_subdomains = []
     for domain in active_domains_raw:
         subdomain = domain.replace(".zenithurl.com", "").lower()
-        if subdomain not in ["zenithurl.com", "www"] and subdomain and subdomain != domain:
+        if subdomain not in ["zenithurl.com", "www"] and subdomain and subdomain != domain and "." not in subdomain and "*" not in subdomain:
             active_subdomains.append(subdomain)
 
     # 2. Add/Update active domains
