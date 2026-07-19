@@ -155,6 +155,9 @@ export default {
       return json({ error: `Unauthorized: ${err.message}` }, 401);
     }
 
+    // Make a missing/misnamed secret obvious instead of a confusing GitHub 401.
+    if (!env.GH_TOKEN) return json({ error: 'GH_TOKEN secret is not set on this Worker' }, 500);
+
     // Gate 2: route to the action.
     try {
       if (url.pathname === '/upload' && request.method === 'POST') return await handleUpload(request, url, env);
