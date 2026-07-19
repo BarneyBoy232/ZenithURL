@@ -3,12 +3,17 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import time
 import os
+import json
 
 current_dir = os.path.dirname(__file__)
-service_account_path = os.path.join(current_dir, "firebase-credentials.json")
 
 if not firebase_admin._apps:
-    cred = credentials.Certificate(service_account_path)
+    # Credentials come from the FIREBASE_CREDENTIALS secret when run by GitHub
+    # Actions, or a local (gitignored) firebase-credentials.json when run by hand.
+    if os.environ.get("FIREBASE_CREDENTIALS"):
+        cred = credentials.Certificate(json.loads(os.environ["FIREBASE_CREDENTIALS"]))
+    else:
+        cred = credentials.Certificate(os.path.join(current_dir, "firebase-credentials.json"))
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
@@ -16,8 +21,10 @@ APP_ID = "zenithurl"
 DOMAINS_REF = db.collection('artifacts').document(APP_ID).collection('public').document('data').collection('domains')
 
 def get_all_subdomains():
-    CLOUDFLARE_API_TOKEN = "cfut_iikhBI7n60IoVwM2Zu4qScKWbBJx7PYnYtLs0Zcha834a9ac"
-    ZONE_ID = "cb957de4a36dcefa4904df15bb79f410" 
+    CLOUDFLARE_API_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN")
+    if not CLOUDFLARE_API_TOKEN:
+        raise SystemExit("CLOUDFLARE_API_TOKEN is not set — add it as a GitHub Actions secret (or a local env var).")
+    ZONE_ID = "cb957de4a36dcefa4904df15bb79f410"  # not secret; just identifies the DNS zone
     
     headers = {
         "Authorization": f"Bearer {CLOUDFLARE_API_TOKEN}",
