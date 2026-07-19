@@ -11,7 +11,7 @@
 //   POST /delete?assetId=<id>                         -> { ok: true }
 //
 // Setup (see the chat steps): paste this into a Cloudflare Worker, add one
-// secret named GITHUB_TOKEN, deploy, and copy the *.workers.dev URL.
+// secret named GH_TOKEN, deploy, and copy the *.workers.dev URL.
 
 const OWNER = 'BarneyBoy232';                 // GitHub account that owns the repo
 const REPO = 'ZenithURL';                     // public repo whose Releases hold the files
@@ -84,7 +84,7 @@ async function verifyAdminToken(token) {
 
 function gh(env, extra = {}) {
   return {
-    'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+    'Authorization': `Bearer ${env.GH_TOKEN}`,
     'User-Agent': 'ZenithURL-Worker',
     'Accept': 'application/vnd.github+json',
     ...extra,
