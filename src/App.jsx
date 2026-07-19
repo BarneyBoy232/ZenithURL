@@ -261,7 +261,7 @@ export default function App() {
         {isAdmin ? (
           <>
             <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium backdrop-blur-md">
-              <ShieldCheck className="w-3.5 h-3.5" /> Editing as Ethan
+              <ShieldCheck className="w-3.5 h-3.5" /> Admin
             </span>
             <button onClick={handleSignOut} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-300 text-xs font-medium hover:bg-white/10 hover:text-white transition-all backdrop-blur-md">
               <LogOut className="w-3.5 h-3.5" /> Sign out
