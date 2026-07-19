@@ -3,7 +3,6 @@ import { Search, CheckCircle2, XCircle, ArrowRight, Check, Clock, Loader2, PlusC
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { getStorage, ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCqc2f3mxV9tIqaSimur4mGOsHIxsWNN8A",
@@ -18,12 +17,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
 const appId = 'zenithurl';
-// Only this Google account is allowed to add/edit. Enforced for real by the
-// Firestore + Storage security rules — hiding the buttons is just cosmetic.
+// Only this Google account may add/edit. Enforced for real by the Firestore
+// rules (data) and the Cloudflare Worker (file uploads) — hiding buttons is cosmetic.
 const ADMIN_EMAIL = 'ethan.barnacoat@gmail.com';
+
+// Cloudflare Worker that verifies the admin and pushes installers to GitHub
+// Releases. Replace with your deployed Worker URL (no trailing slash).
+const UPLOAD_WORKER_URL = 'https://zenith-installer-uploader.ethan-barnacoat.workers.dev';
 
 const STATUS_CONFIG = {
   finished: { icon: Check, color: 'bg-emerald-400', text: 'text-emerald-300', bg: 'bg-emerald-950/50', border: 'border-emerald-800/50', label: 'Finished' },
@@ -38,6 +40,31 @@ function formatSize(bytes) {
   let n = bytes, i = 0;
   while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
   return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+// Send a file to the Cloudflare Worker (with the admin's Firebase token) and
+// report progress. Resolves to { downloadUrl, fileName, size, assetId }.
+function uploadToWorker(file, idToken, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${UPLOAD_WORKER_URL}/upload?name=${encodeURIComponent(file.name)}`);
+    xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) onProgress(Math.round((ev.loaded / ev.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText)); }
+        catch { reject(new Error('Bad response from uploader')); }
+      } else {
+        let msg = `HTTP ${xhr.status}`;
+        try { msg = JSON.parse(xhr.responseText).error || msg; } catch { /* keep default */ }
+        reject(new Error(msg));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Network error reaching uploader'));
+    xhr.send(file);
+  });
 }
 
 // Reusable status pill. For visitors it's a plain read-only badge; for the
@@ -432,41 +459,31 @@ function AppsView({ isAdmin }) {
     setUploadError('');
     const slug = form.name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
     const id = `${slug}-${Date.now()}`;
-    const path = `apps/${id}/${file.name}`;
-    const task = uploadBytesResumable(storageRef(storage, path), file);
-    setUploadPct(0);
-    task.on('state_changed',
-      (snap) => setUploadPct(Math.round((snap.bytesTransferred / snap.totalBytes) * 100)),
-      (err) => {
-        console.error('Upload failed', err);
-        setUploadError('Upload failed — check that Storage is enabled and you are the admin.');
-        setUploadPct(null);
-      },
-      async () => {
-        try {
-          const url = await getDownloadURL(task.snapshot.ref);
-          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'apps', id), {
-            name: form.name.trim(),
-            description: form.description.trim(),
-            platform: form.platform,
-            status: 'finished',
-            fileUrl: url,
-            fileName: file.name,
-            storagePath: path,
-            size: file.size,
-            createdAt: Date.now()
-          });
-          setForm({ name: '', description: '', platform: 'Windows' });
-          setFile(null);
-          setUploadPct(null);
-          setShowForm(false);
-        } catch (err) {
-          console.error('Saving app record failed', err);
-          setUploadError('File uploaded but saving its details failed.');
-          setUploadPct(null);
-        }
-      }
-    );
+    try {
+      // Prove to the Worker that we're the signed-in admin, then upload.
+      const idToken = await auth.currentUser.getIdToken();
+      setUploadPct(0);
+      const result = await uploadToWorker(file, idToken, setUploadPct);
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'apps', id), {
+        name: form.name.trim(),
+        description: form.description.trim(),
+        platform: form.platform,
+        status: 'finished',
+        fileUrl: result.downloadUrl,
+        fileName: result.fileName,
+        assetId: result.assetId,
+        size: result.size,
+        createdAt: Date.now()
+      });
+      setForm({ name: '', description: '', platform: 'Windows' });
+      setFile(null);
+      setUploadPct(null);
+      setShowForm(false);
+    } catch (err) {
+      console.error('Upload failed', err);
+      setUploadError(`Upload failed: ${err.message}`);
+      setUploadPct(null);
+    }
   };
 
   const handleDelete = async (e, appRow) => {
@@ -474,8 +491,12 @@ function AppsView({ isAdmin }) {
     if (!isAdmin) return;
     if (!window.confirm(`Delete "${appRow.name}"? This removes the installer too.`)) return;
     try {
-      if (appRow.storagePath) {
-        await deleteObject(storageRef(storage, appRow.storagePath)).catch(() => {});
+      if (appRow.assetId) {
+        const idToken = await auth.currentUser.getIdToken();
+        await fetch(`${UPLOAD_WORKER_URL}/delete?assetId=${appRow.assetId}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${idToken}` }
+        }).catch(() => {});
       }
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'apps', appRow.id));
     } catch (err) {
