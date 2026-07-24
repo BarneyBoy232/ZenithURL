@@ -604,7 +604,7 @@ function AppsView({ isAdmin }) {
                   <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
                     <Download className="w-4 h-4" />
                   </div>
-                  <div className="overflow-hidden">
+                  <div className="overflow-hidden min-w-0 flex-1">
                     <h3 className="font-semibold text-lg text-slate-200 truncate group-hover:text-white transition-colors">{appRow.name}</h3>
                     <p className="text-sm text-slate-500 truncate">
                       {appRow.platform}
