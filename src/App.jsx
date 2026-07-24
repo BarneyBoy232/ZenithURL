@@ -389,7 +389,7 @@ export default function App() {
                     <div
                       key={page.id || page.name}
                       onClick={() => window.open(`https://${page.name}.zenithurl.com`, '_blank')}
-                      className={`cursor-pointer group flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 gap-4 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)] relative ${isDropdownOpen ? 'z-50' : 'z-0'}`}
+                      className={`cursor-pointer group flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 gap-4 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)] relative min-w-0 ${isDropdownOpen ? 'z-50' : 'z-0'}`}
                     >
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
@@ -598,7 +598,7 @@ function AppsView({ isAdmin }) {
               <div
                 key={appRow.id}
                 onClick={() => appRow.fileUrl && window.open(appRow.fileUrl, '_blank')}
-                className={`cursor-pointer group flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 gap-4 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)] relative ${isDropdownOpen ? 'z-50' : 'z-0'}`}
+                className={`cursor-pointer group flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 gap-4 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)] relative min-w-0 ${isDropdownOpen ? 'z-50' : 'z-0'}`}
               >
                 <div className="flex items-center gap-4 min-w-0">
                   <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
@@ -609,8 +609,10 @@ function AppsView({ isAdmin }) {
                     <p className="text-sm text-slate-500 truncate">
                       {appRow.platform}
                       {appRow.size ? ` · ${formatSize(appRow.size)}` : ''}
-                      {appRow.description ? ` · ${appRow.description}` : ''}
                     </p>
+                    {appRow.description && (
+                      <p className="text-sm text-slate-500 mt-0.5 line-clamp-2 break-words">{appRow.description}</p>
+                    )}
                   </div>
                 </div>
 
