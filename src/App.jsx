@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, CheckCircle2, XCircle, ArrowRight, Check, Clock, Loader2, PlusCircle, Globe, Sparkles, AppWindow, Download, Upload, Trash2, LogIn, LogOut, ShieldCheck } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, ArrowRight, Check, Clock, Loader2, PlusCircle, Globe, Sparkles, AppWindow, Download, Upload, Trash2, LogIn, LogOut, ShieldCheck, Pencil } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -441,6 +441,10 @@ function AppsView({ isAdmin }) {
   const [uploadPct, setUploadPct] = useState(null);
   const [uploadError, setUploadError] = useState('');
 
+  // Inline description editing (admin)
+  const [editingId, setEditingId] = useState(null);
+  const [editDesc, setEditDesc] = useState('');
+
   useEffect(() => {
     const appsRef = collection(db, 'artifacts', appId, 'public', 'data', 'apps');
     const unsubscribe = onSnapshot(appsRef, (snapshot) => {
@@ -512,6 +516,17 @@ function AppsView({ isAdmin }) {
       setOpenDropdown(null);
     } catch (err) {
       console.error('Status update failed', err);
+    }
+  };
+
+  const handleSaveDescription = async (id) => {
+    if (!isAdmin) return;
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'apps', id), { description: editDesc.trim() });
+      setEditingId(null);
+      setEditDesc('');
+    } catch (err) {
+      console.error('Description update failed', err);
     }
   };
 
@@ -597,44 +612,83 @@ function AppsView({ isAdmin }) {
             return (
               <div
                 key={appRow.id}
-                onClick={() => appRow.fileUrl && window.open(appRow.fileUrl, '_blank')}
-                className={`cursor-pointer group flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 gap-4 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)] relative min-w-0 ${isDropdownOpen ? 'z-50' : 'z-0'}`}
+                className={`group p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)] relative min-w-0 ${isDropdownOpen ? 'z-50' : 'z-0'}`}
               >
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
-                    <Download className="w-4 h-4" />
+                <div
+                  onClick={() => appRow.fileUrl && window.open(appRow.fileUrl, '_blank')}
+                  className="cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-0"
+                >
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
+                      <Download className="w-4 h-4" />
+                    </div>
+                    <div className="overflow-hidden min-w-0 flex-1">
+                      <h3 className="font-semibold text-lg text-slate-200 truncate group-hover:text-white transition-colors">{appRow.name}</h3>
+                      <p className="text-sm text-slate-500 truncate">
+                        {appRow.platform}
+                        {appRow.size ? ` · ${formatSize(appRow.size)}` : ''}
+                      </p>
+                      {appRow.description && (
+                        <p className="text-sm text-slate-500 mt-0.5 break-words whitespace-pre-wrap">{appRow.description}</p>
+                      )}
+                    </div>
                   </div>
-                  <div className="overflow-hidden min-w-0 flex-1">
-                    <h3 className="font-semibold text-lg text-slate-200 truncate group-hover:text-white transition-colors">{appRow.name}</h3>
-                    <p className="text-sm text-slate-500 truncate">
-                      {appRow.platform}
-                      {appRow.size ? ` · ${formatSize(appRow.size)}` : ''}
-                    </p>
-                    {appRow.description && (
-                      <p className="text-sm text-slate-500 mt-0.5 line-clamp-2 break-words">{appRow.description}</p>
+
+                  <div className="flex items-center gap-3 sm:ml-auto shrink-0">
+                    <StatusControl
+                      status={appRow.status}
+                      isAdmin={isAdmin}
+                      isOpen={isDropdownOpen}
+                      onToggle={() => setOpenDropdown(isDropdownOpen ? null : appRow.id)}
+                      onClose={() => setOpenDropdown(null)}
+                      onSelect={(e, key) => handleStatus(e, appRow.id, key)}
+                    />
+                    {isAdmin && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setOpenDropdown(null); setEditingId(appRow.id); setEditDesc(appRow.description || ''); }}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-indigo-300 hover:bg-indigo-500/10 transition-all"
+                        title="Edit description"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button
+                        onClick={(e) => handleDelete(e, appRow)}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-rose-300 hover:bg-rose-500/10 transition-all"
+                        title="Delete app"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 sm:ml-auto shrink-0">
-                  <StatusControl
-                    status={appRow.status}
-                    isAdmin={isAdmin}
-                    isOpen={isDropdownOpen}
-                    onToggle={() => setOpenDropdown(isDropdownOpen ? null : appRow.id)}
-                    onClose={() => setOpenDropdown(null)}
-                    onSelect={(e, key) => handleStatus(e, appRow.id, key)}
-                  />
-                  {isAdmin && (
-                    <button
-                      onClick={(e) => handleDelete(e, appRow)}
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-rose-300 hover:bg-rose-500/10 transition-all"
-                      title="Delete app"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
+                {isAdmin && editingId === appRow.id && (
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    <textarea
+                      value={editDesc}
+                      onChange={(e) => setEditDesc(e.target.value)}
+                      placeholder="Description..."
+                      rows={3}
+                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 outline-none focus:border-indigo-400/50 transition-all resize-y"
+                    />
+                    <div className="flex justify-end gap-2 mt-2">
+                      <button
+                        onClick={() => { setEditingId(null); setEditDesc(''); }}
+                        className="px-4 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 text-sm font-medium transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => handleSaveDescription(appRow.id)}
+                        className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
