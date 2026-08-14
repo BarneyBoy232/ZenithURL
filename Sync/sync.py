@@ -21,7 +21,7 @@ APP_ID = "zenithurl"
 DOMAINS_REF = db.collection('artifacts').document(APP_ID).collection('public').document('data').collection('domains')
 
 ZONE_ID = "cb957de4a36dcefa4904df15bb79f410"   # zenithurl.com DNS zone (not secret)
-VERCEL_CNAME_TARGET = "cname.vercel-dns.com"   # universal Vercel target for any subdomain
+FALLBACK_CNAME = "cname.vercel-dns.com"        # universal Vercel target (always works)
 
 
 def cloudflare_headers():
@@ -40,36 +40,48 @@ def clean_subdomain(name):
     return sub
 
 
-def get_cloudflare_subdomains():
-    """Subdomains that already have an A/CNAME record in Cloudflare."""
+def get_cloudflare_records():
+    """{subdomain: {'id', 'content'}} for the A/CNAME records already in Cloudflare."""
     r = requests.get(
         f"https://api.cloudflare.com/client/v4/zones/{ZONE_ID}/dns_records",
         headers=cloudflare_headers(), params={"per_page": 100}
     )
     if r.status_code != 200:
         print(f"Cloudflare list failed: {r.status_code} {r.text}")
-        return set()
-    subs = set()
+        return {}
+    recs = {}
     for rec in r.json().get("result", []):
         if rec.get("type") in ("A", "CNAME"):
             s = clean_subdomain(rec.get("name", ""))
             if s:
-                subs.add(s)
-    return subs
+                recs[s] = {"id": rec["id"], "content": (rec.get("content") or "").rstrip(".")}
+    return recs
 
 
-def get_vercel_subdomains():
-    """Subdomains assigned to Vercel projects. Returns None (skip the Vercel
-    step) if there's no VERCEL_TOKEN or the API can't be reached, so the sync
-    still runs Cloudflare-only."""
+def recommended_cname(domain, headers):
+    """Vercel's preferred CNAME target for a domain (its top-ranked value, which
+    is what keeps Cloudflare's config green). Falls back to the universal target."""
+    try:
+        cfg = requests.get(f"https://api.vercel.com/v6/domains/{domain}/config", headers=headers, timeout=30).json()
+        ranked = cfg.get("recommendedCNAME") or []
+        if ranked:
+            return ranked[0]["value"].rstrip(".")
+    except Exception:
+        pass
+    return FALLBACK_CNAME
+
+
+def get_vercel_targets():
+    """{subdomain: preferred_cname} for every Vercel site. Returns None (skip the
+    Vercel step) if there's no VERCEL_TOKEN or the API can't be reached."""
     token = os.environ.get("VERCEL_TOKEN")
     if not token:
         return None
     headers = {"Authorization": f"Bearer {token}"}
     try:
+        targets = {}
         projects = requests.get("https://api.vercel.com/v9/projects?limit=100", headers=headers, timeout=30)
         projects.raise_for_status()
-        subs = set()
         for p in projects.json().get("projects", []):
             r = requests.get(
                 f"https://api.vercel.com/v9/projects/{p['id']}/domains?limit=100",
@@ -79,46 +91,48 @@ def get_vercel_subdomains():
             for d in r.json().get("domains", []):
                 s = clean_subdomain(d.get("name", ""))
                 if s:
-                    subs.add(s)
-        return subs
+                    targets[s] = recommended_cname(d.get("name"), headers)
+        return targets
     except Exception as e:
         print(f"Vercel lookup failed ({e}); skipping the Vercel step this run.")
         return None
 
 
-def create_cloudflare_record(subdomain):
-    """Add a DNS-only CNAME for a Vercel site that Cloudflare is missing."""
-    body = {
-        "type": "CNAME",
-        "name": f"{subdomain}.zenithurl.com",
-        "content": VERCEL_CNAME_TARGET,
-        "proxied": False,
-        "ttl": 1,
-    }
-    r = requests.post(
-        f"https://api.cloudflare.com/client/v4/zones/{ZONE_ID}/dns_records",
-        headers=cloudflare_headers(), json=body
-    )
-    if r.status_code in (200, 201):
-        print(f"Created Cloudflare record: {subdomain}")
-        return True
-    print(f"Failed to create record for {subdomain}: {r.status_code} {r.text}")
-    return False
+def upsert_cloudflare_record(subdomain, target, existing):
+    """Create the DNS-only CNAME if Cloudflare is missing it, or update it if it
+    points somewhere other than Vercel's preferred target (kills the yellow
+    'DNS Change Recommended' warning)."""
+    body = {"type": "CNAME", "name": f"{subdomain}.zenithurl.com", "content": target, "proxied": False, "ttl": 1}
+    if subdomain not in existing:
+        r = requests.post(
+            f"https://api.cloudflare.com/client/v4/zones/{ZONE_ID}/dns_records",
+            headers=cloudflare_headers(), json=body
+        )
+        print(f"Created Cloudflare record: {subdomain} -> {target}" if r.status_code in (200, 201)
+              else f"Failed to create {subdomain}: {r.status_code} {r.text}")
+    elif existing[subdomain]["content"] != target:
+        rid = existing[subdomain]["id"]
+        r = requests.put(
+            f"https://api.cloudflare.com/client/v4/zones/{ZONE_ID}/dns_records/{rid}",
+            headers=cloudflare_headers(), json=body
+        )
+        print(f"Updated Cloudflare record: {subdomain} -> {target}" if r.status_code == 200
+              else f"Failed to update {subdomain}: {r.status_code} {r.text}")
 
 
 def sync_to_database():
-    cf_subs = get_cloudflare_subdomains()
+    cf = get_cloudflare_records()
 
-    # If a Vercel token is present, make sure every Vercel site has a matching
-    # Cloudflare record. This is what lets a new site you deploy show up with no
-    # manual Cloudflare step: Vercel is the source of truth, we backfill Cloudflare.
-    vercel_subs = get_vercel_subdomains()
-    if vercel_subs is not None:
-        for sub in sorted(vercel_subs - cf_subs):
-            if create_cloudflare_record(sub):
-                cf_subs.add(sub)
+    # If a Vercel token is present, make every Vercel site's Cloudflare record
+    # exist and point at Vercel's preferred target. This is what lets a new site
+    # appear (and stay green) with no manual Cloudflare step.
+    vercel = get_vercel_targets()
+    if vercel is not None:
+        for sub, target in sorted(vercel.items()):
+            upsert_cloudflare_record(sub, target, cf)
+            cf.setdefault(sub, {"id": None, "content": target})
 
-    active_subdomains = sorted(cf_subs)
+    active_subdomains = sorted(cf.keys())
     if not active_subdomains:
         print("No domains found.")
         return
