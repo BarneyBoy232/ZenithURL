@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, CheckCircle2, XCircle, ArrowRight, Check, Clock, Loader2, PlusCircle, Globe, Sparkles, AppWindow, Download, Upload, Trash2, LogIn, LogOut, ShieldCheck, Pencil } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, ArrowRight, Check, Clock, Loader2, PlusCircle, Globe, Sparkles, AppWindow, Download, Upload, Trash2, LogIn, LogOut, ShieldCheck, Pencil, Eye, EyeOff } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -117,9 +117,13 @@ export default function App() {
   const [pages, setPages] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [editingNoteName, setEditingNoteName] = useState(null);
+  const [noteText, setNoteText] = useState('');
 
   // Is the current signed-in user the allowed editor?
   const isAdmin = !!user && !user.isAnonymous && user.email === ADMIN_EMAIL;
+  // Visitors don't see hidden sites; the admin sees everything (dimmed if hidden).
+  const visiblePages = pages.filter(p => isAdmin || !p.hidden);
 
   useEffect(() => {
     if (!document.querySelector('script[src="https://cdn.tailwindcss.com"]')) {
@@ -242,6 +246,33 @@ export default function App() {
       setOpenDropdown(null);
     } catch (err) {
       console.error("Failed to update status", err);
+    }
+  };
+
+  // Hide a site from visitors (admin still sees it). Stored on the domain doc;
+  // the sync's lastSeen update leaves it intact.
+  const handleToggleHidden = async (e, page) => {
+    e.stopPropagation();
+    if (!isAdmin) return;
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'domains', page.name), {
+        hidden: !page.hidden
+      });
+    } catch (err) {
+      console.error("Failed to toggle visibility", err);
+    }
+  };
+
+  const handleSaveNote = async (domainName) => {
+    if (!isAdmin) return;
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'domains', domainName), {
+        note: noteText.trim()
+      });
+      setEditingNoteName(null);
+      setNoteText('');
+    } catch (err) {
+      console.error("Failed to save note", err);
     }
   };
 
@@ -375,7 +406,7 @@ export default function App() {
                 Active Directory
               </h2>
               <span className="text-sm text-slate-500 bg-white/5 px-3 py-1 rounded-full border border-white/5">
-                {isLoading ? 'Loading...' : `${pages.length} nodes`}
+                {isLoading ? 'Loading...' : `${visiblePages.length} nodes`}
               </span>
             </div>
 
@@ -383,34 +414,92 @@ export default function App() {
               <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
             ) : (
               <div className="grid gap-3">
-                {pages.map((page) => {
+                {visiblePages.map((page) => {
                   const isDropdownOpen = openDropdown === page.name;
+                  const isEditingNote = editingNoteName === page.name;
                   return (
                     <div
                       key={page.id || page.name}
-                      onClick={() => window.open(`https://${page.name}.zenithurl.com`, '_blank')}
-                      className={`cursor-pointer group flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 gap-4 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)] relative min-w-0 ${isDropdownOpen ? 'z-50' : 'z-0'}`}
+                      className={`group p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)] relative min-w-0 ${isDropdownOpen ? 'z-50' : 'z-0'} ${isAdmin && page.hidden ? 'opacity-60' : ''}`}
                     >
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
-                          <ArrowRight className="w-4 h-4 -rotate-45" />
+                      <div
+                        onClick={() => window.open(`https://${page.name}.zenithurl.com`, '_blank')}
+                        className="cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-0"
+                      >
+                        <div className="flex items-center gap-4 min-w-0">
+                          <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
+                            <ArrowRight className="w-4 h-4 -rotate-45" />
+                          </div>
+                          <div className="overflow-hidden min-w-0">
+                            <h3 className="font-semibold text-lg text-slate-200 truncate group-hover:text-white transition-colors flex items-center gap-2">
+                              <span className="truncate">{page.name}</span>
+                              {isAdmin && page.hidden && (
+                                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-700/60 text-slate-300 border border-white/10">Hidden</span>
+                              )}
+                            </h3>
+                            <p className="text-sm text-slate-500 truncate">{page.name}.zenithurl.com</p>
+                          </div>
                         </div>
-                        <div className="overflow-hidden">
-                          <h3 className="font-semibold text-lg text-slate-200 truncate group-hover:text-white transition-colors">{page.name}</h3>
-                          <p className="text-sm text-slate-500 truncate">{page.name}.zenithurl.com</p>
+
+                        <div className="flex items-center gap-3 sm:ml-auto shrink-0">
+                          <StatusControl
+                            status={page.status}
+                            isAdmin={isAdmin}
+                            isOpen={isDropdownOpen}
+                            onToggle={() => setOpenDropdown(isDropdownOpen ? null : page.name)}
+                            onClose={() => setOpenDropdown(null)}
+                            onSelect={(e, key) => handleStatusChange(e, page.name, key)}
+                          />
+                          {isAdmin && (
+                            <button
+                              onClick={(e) => handleToggleHidden(e, page)}
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-indigo-300 hover:bg-indigo-500/10 transition-all"
+                              title={page.hidden ? 'Show to visitors' : 'Hide from visitors'}
+                            >
+                              {page.hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          )}
+                          {isAdmin && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingNoteName(page.name); setNoteText(page.note || ''); }}
+                              className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-indigo-300 hover:bg-indigo-500/10 transition-all"
+                              title="Edit note"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 sm:ml-auto">
-                        <StatusControl
-                          status={page.status}
-                          isAdmin={isAdmin}
-                          isOpen={isDropdownOpen}
-                          onToggle={() => setOpenDropdown(isDropdownOpen ? null : page.name)}
-                          onClose={() => setOpenDropdown(null)}
-                          onSelect={(e, key) => handleStatusChange(e, page.name, key)}
-                        />
-                      </div>
+                      {page.note && !isEditingNote && (
+                        <p className="mt-3 pt-3 border-t border-white/10 text-sm text-slate-400 break-words whitespace-pre-wrap">{page.note}</p>
+                      )}
+
+                      {isAdmin && isEditingNote && (
+                        <div className="mt-3 pt-3 border-t border-white/10">
+                          <textarea
+                            value={noteText}
+                            onChange={(e) => setNoteText(e.target.value)}
+                            placeholder="Note (shown under this site)..."
+                            rows={2}
+                            className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 outline-none focus:border-indigo-400/50 transition-all resize-y"
+                          />
+                          <div className="flex justify-end gap-2 mt-2">
+                            <button
+                              onClick={() => { setEditingNoteName(null); setNoteText(''); }}
+                              className="px-4 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 text-sm font-medium transition-all"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleSaveNote(page.name)}
+                              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
