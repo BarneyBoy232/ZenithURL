@@ -530,9 +530,8 @@ function AppsView({ isAdmin }) {
   const [uploadPct, setUploadPct] = useState(null);
   const [uploadError, setUploadError] = useState('');
 
-  // Inline description editing (admin)
+  // When set, the top form is editing this app (null = adding a new one).
   const [editingId, setEditingId] = useState(null);
-  const [editDesc, setEditDesc] = useState('');
 
   useEffect(() => {
     const appsRef = collection(db, 'artifacts', appId, 'public', 'data', 'apps');
@@ -546,35 +545,69 @@ function AppsView({ isAdmin }) {
     return () => unsubscribe();
   }, []);
 
-  const handleUpload = async (e) => {
-    e.preventDefault();
-    if (!isAdmin || !file || !form.name.trim()) return;
+  const resetForm = () => {
+    setForm({ name: '', description: '', platform: 'Windows' });
+    setFile(null);
+    setUploadPct(null);
     setUploadError('');
-    const slug = form.name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
-    const id = `${slug}-${Date.now()}`;
+    setEditingId(null);
+    setShowForm(false);
+  };
+
+  // Handles both adding a new app and editing every part of an existing one.
+  // When editing, a new file is optional — leave it empty to keep the current one.
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!isAdmin || !form.name.trim()) return;
+    if (!editingId && !file) return; // a new app needs a file
+    setUploadError('');
     try {
-      // Prove to the Worker that we're the signed-in admin, then upload.
-      const idToken = await auth.currentUser.getIdToken();
-      setUploadPct(0);
-      const result = await uploadToWorker(file, idToken, setUploadPct);
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'apps', id), {
-        name: form.name.trim(),
-        description: form.description.trim(),
-        platform: form.platform,
-        status: 'finished',
-        fileUrl: result.downloadUrl,
-        fileName: result.fileName,
-        assetId: result.assetId,
-        size: result.size,
-        createdAt: Date.now()
-      });
-      setForm({ name: '', description: '', platform: 'Windows' });
-      setFile(null);
-      setUploadPct(null);
-      setShowForm(false);
+      let fileFields = null;
+      let idToken = null;
+      if (file) {
+        idToken = await auth.currentUser.getIdToken();
+        setUploadPct(0);
+        const result = await uploadToWorker(file, idToken, setUploadPct);
+        fileFields = {
+          fileUrl: result.downloadUrl,
+          fileName: result.fileName,
+          assetId: result.assetId,
+          size: result.size
+        };
+      }
+
+      if (editingId) {
+        const existing = apps.find(a => a.id === editingId);
+        const data = {
+          name: form.name.trim(),
+          description: form.description.trim(),
+          platform: form.platform
+        };
+        if (fileFields) Object.assign(data, fileFields);
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'apps', editingId), data);
+        // If the installer was replaced, remove the old one from GitHub.
+        if (fileFields && existing?.assetId && existing.assetId !== fileFields.assetId) {
+          await fetch(`${UPLOAD_WORKER_URL}/delete?assetId=${existing.assetId}`, {
+            method: 'POST', headers: { Authorization: `Bearer ${idToken}` }
+          }).catch(() => {});
+        }
+      } else {
+        const slug = form.name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-');
+        const id = `${slug}-${Date.now()}`;
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'apps', id), {
+          name: form.name.trim(),
+          description: form.description.trim(),
+          platform: form.platform,
+          status: 'finished',
+          ...fileFields,
+          createdAt: Date.now()
+        });
+      }
+
+      resetForm();
     } catch (err) {
-      console.error('Upload failed', err);
-      setUploadError(`Upload failed: ${err.message}`);
+      console.error('Save failed', err);
+      setUploadError(`Save failed: ${err.message}`);
       setUploadPct(null);
     }
   };
@@ -608,17 +641,6 @@ function AppsView({ isAdmin }) {
     }
   };
 
-  const handleSaveDescription = async (id) => {
-    if (!isAdmin) return;
-    try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'apps', id), { description: editDesc.trim() });
-      setEditingId(null);
-      setEditDesc('');
-    } catch (err) {
-      console.error('Description update failed', err);
-    }
-  };
-
   return (
     <>
       <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
@@ -632,7 +654,7 @@ function AppsView({ isAdmin }) {
           </span>
           {isAdmin && (
             <button
-              onClick={() => setShowForm(v => !v)}
+              onClick={() => { if (editingId) { resetForm(); setShowForm(true); } else setShowForm(v => !v); }}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]"
             >
               <PlusCircle className="w-4 h-4" /> Add app
@@ -641,9 +663,13 @@ function AppsView({ isAdmin }) {
         </div>
       </div>
 
-      {/* Admin upload form */}
+      {/* Admin add / edit form */}
       {isAdmin && showForm && (
-        <form onSubmit={handleUpload} className="mb-6 p-5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md flex flex-col gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+        <form onSubmit={handleSubmit} className="mb-6 p-5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md flex flex-col gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-300">{editingId ? 'Edit app' : 'Add app'}</h3>
+            <button type="button" onClick={resetForm} className="text-slate-500 hover:text-white text-sm transition-colors">Cancel</button>
+          </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <input
               type="text"
@@ -669,23 +695,28 @@ function AppsView({ isAdmin }) {
             type="text"
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder="Short description (optional)"
+            placeholder="Description (optional)"
             className="h-11 px-4 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 outline-none focus:border-indigo-400/50 transition-all"
           />
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
             <label className="flex-1 flex items-center gap-3 h-11 px-4 rounded-xl bg-white/5 border border-dashed border-white/20 text-slate-400 cursor-pointer hover:border-indigo-400/50 hover:text-slate-200 transition-all">
               <Upload className="w-4 h-4 shrink-0" />
-              <span className="truncate">{file ? `${file.name} (${formatSize(file.size)})` : 'Choose installer file...'}</span>
+              <span className="truncate">
+                {file ? `${file.name} (${formatSize(file.size)})` : editingId ? 'Replace installer (optional)' : 'Choose installer file...'}
+              </span>
               <input type="file" className="hidden" onChange={(e) => setFile(e.target.files[0] || null)} />
             </label>
             <button
               type="submit"
-              disabled={uploadPct !== null || !file || !form.name.trim()}
+              disabled={uploadPct !== null || !form.name.trim() || (!editingId && !file)}
               className="h-11 px-6 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(5,150,105,0.3)] transition-all"
             >
-              {uploadPct !== null ? <><Loader2 className="w-4 h-4 animate-spin" /> {uploadPct}%</> : <><Upload className="w-4 h-4" /> Upload</>}
+              {uploadPct !== null
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> {uploadPct}%</>
+                : editingId ? <><Check className="w-4 h-4" /> Save</> : <><Upload className="w-4 h-4" /> Upload</>}
             </button>
           </div>
+          {editingId && !file && <p className="text-xs text-slate-500">Leave the file empty to keep the current installer.</p>}
           {uploadError && <p className="text-sm text-rose-300">{uploadError}</p>}
         </form>
       )}
@@ -734,9 +765,19 @@ function AppsView({ isAdmin }) {
                     />
                     {isAdmin && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); setOpenDropdown(null); setEditingId(appRow.id); setEditDesc(appRow.description || ''); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenDropdown(null);
+                          setEditingId(appRow.id);
+                          setForm({ name: appRow.name || '', description: appRow.description || '', platform: appRow.platform || 'Windows' });
+                          setFile(null);
+                          setUploadError('');
+                          setUploadPct(null);
+                          setShowForm(true);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
                         className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-indigo-300 hover:bg-indigo-500/10 transition-all"
-                        title="Edit description"
+                        title="Edit app"
                       >
                         <Pencil className="w-4 h-4" />
                       </button>
@@ -753,31 +794,6 @@ function AppsView({ isAdmin }) {
                   </div>
                 </div>
 
-                {isAdmin && editingId === appRow.id && (
-                  <div className="mt-4 pt-4 border-t border-white/10">
-                    <textarea
-                      value={editDesc}
-                      onChange={(e) => setEditDesc(e.target.value)}
-                      placeholder="Description..."
-                      rows={3}
-                      className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 outline-none focus:border-indigo-400/50 transition-all resize-y"
-                    />
-                    <div className="flex justify-end gap-2 mt-2">
-                      <button
-                        onClick={() => { setEditingId(null); setEditDesc(''); }}
-                        className="px-4 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 text-sm font-medium transition-all"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => handleSaveDescription(appRow.id)}
-                        className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                )}
               </div>
             );
           })}
