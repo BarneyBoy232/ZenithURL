@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, CheckCircle2, XCircle, ArrowRight, Check, Clock, Loader2, PlusCircle, Globe, Sparkles, AppWindow, Download, Upload, Trash2, LogIn, LogOut, ShieldCheck, Pencil, Eye, EyeOff } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, ArrowRight, Check, Clock, Loader2, PlusCircle, Globe, Sparkles, AppWindow, Download, Upload, Trash2, LogIn, LogOut, ShieldCheck, Pencil, Eye, EyeOff, KeyRound, Copy } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -120,6 +120,13 @@ export default function App() {
   const [editingNoteName, setEditingNoteName] = useState(null);
   const [noteText, setNoteText] = useState('');
 
+  // Publish-API panel (admin only): shows the key for AIs / build scripts.
+  const [showPublish, setShowPublish] = useState(false);
+  const [publishKey, setPublishKey] = useState('');
+  const [publishUrl, setPublishUrl] = useState('');
+  const [publishLoading, setPublishLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   // Is the current signed-in user the allowed editor?
   const isAdmin = !!user && !user.isAnonymous && user.email === ADMIN_EMAIL;
   // Visitors don't see hidden sites; the admin sees everything (dimmed if hidden).
@@ -157,6 +164,33 @@ export default function App() {
     } catch (err) {
       console.error('Sign-out failed', err);
     }
+  };
+
+  // Fetch the publish key from the Worker, authed by the admin's Google token
+  // (so only the admin can ever retrieve it).
+  const openPublishPanel = async () => {
+    setShowPublish(true);
+    setPublishLoading(true);
+    setCopied(false);
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch(`${UPLOAD_WORKER_URL}/admin/key`, { headers: { Authorization: `Bearer ${idToken}` } });
+      const data = await res.json();
+      setPublishKey(data.key || '');
+      setPublishUrl(data.publishUrl || `${UPLOAD_WORKER_URL}/publish`);
+    } catch (err) {
+      console.error('Failed to load publish key', err);
+      setPublishKey('');
+    } finally {
+      setPublishLoading(false);
+    }
+  };
+
+  const copyPublishKey = () => {
+    if (!publishKey) return;
+    navigator.clipboard?.writeText(publishKey)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })
+      .catch(() => {});
   };
 
   useEffect(() => {
@@ -294,6 +328,9 @@ export default function App() {
             <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium backdrop-blur-md">
               <ShieldCheck className="w-3.5 h-3.5" /> Admin
             </span>
+            <button onClick={openPublishPanel} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-300 text-xs font-medium hover:bg-white/10 hover:text-white transition-all backdrop-blur-md">
+              <KeyRound className="w-3.5 h-3.5" /> Publish API
+            </button>
             <button onClick={handleSignOut} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-slate-300 text-xs font-medium hover:bg-white/10 hover:text-white transition-all backdrop-blur-md">
               <LogOut className="w-3.5 h-3.5" /> Sign out
             </button>
@@ -304,6 +341,41 @@ export default function App() {
           </button>
         )}
       </div>
+
+      {/* Publish API panel (admin only) */}
+      {isAdmin && showPublish && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowPublish(false)}>
+          <div className="w-full max-w-xl bg-slate-900/95 border border-white/10 rounded-2xl p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-indigo-400" /> Publish API
+              </h3>
+              <button onClick={() => setShowPublish(false)} className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-white hover:bg-white/5 transition-all">✕</button>
+            </div>
+            <p className="text-sm text-slate-400 mb-4">
+              Give this key to an AI or build script to publish installers to the Apps page automatically. Keep it secret — anyone with it can add apps.
+            </p>
+            {publishLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-indigo-500" /></div>
+            ) : (
+              <>
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Publish key</label>
+                <div className="flex gap-2 mt-1 mb-4">
+                  <input readOnly value={publishKey || '(not set — add a PUBLISH_KEY secret to the Worker)'} className="flex-1 h-11 px-4 rounded-xl bg-white/5 border border-white/10 text-white text-sm font-mono outline-none truncate" />
+                  <button onClick={copyPublishKey} disabled={!publishKey} className="h-11 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-sm font-medium flex items-center gap-1.5 transition-all shrink-0">
+                    <Copy className="w-4 h-4" /> {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Example — publish an installer</label>
+                <pre className="mt-1 p-4 rounded-xl bg-black/40 border border-white/10 text-xs text-slate-300 overflow-x-auto whitespace-pre">{`curl -X POST "${publishUrl}?name=My%20App&platform=Windows&description=My%20cool%20app&filename=setup.exe" \\
+  -H "Authorization: Bearer ${publishKey || '<publish key>'}" \\
+  --data-binary @setup.exe`}</pre>
+                <p className="text-xs text-slate-500 mt-3">Fields: name (required), platform, description, filename. Send the installer as the request body — it appears on the Apps page right away.</p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <header className="pt-24 pb-10 px-6 flex flex-col items-center text-center relative z-10">
         <div className="flex items-center gap-3 mb-8">
