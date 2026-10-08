@@ -126,6 +126,7 @@ export default function App() {
   const [publishUrl, setPublishUrl] = useState('');
   const [publishLoading, setPublishLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [aiCopied, setAiCopied] = useState(false);
 
   // Is the current signed-in user the allowed editor?
   const isAdmin = !!user && !user.isAnonymous && user.email === ADMIN_EMAIL;
@@ -190,6 +191,26 @@ export default function App() {
     if (!publishKey) return;
     navigator.clipboard?.writeText(publishKey)
       .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })
+      .catch(() => {});
+  };
+
+  // A self-contained block to paste into any AI chat — it has everything the AI
+  // needs to publish installers to the Apps page.
+  const copyForAi = () => {
+    if (!publishKey) return;
+    const text = `You can publish an app installer to ZenithURL's Apps page.
+
+POST ${publishUrl}
+Header: Authorization: Bearer ${publishKey}
+Query params: name (required), platform (Windows|macOS|Linux|Android|Other), description, filename
+Body: the raw installer file.
+
+Example:
+curl -X POST "${publishUrl}?name=My%20App&platform=Windows&description=My%20app&filename=setup.exe" -H "Authorization: Bearer ${publishKey}" --data-binary @setup.exe
+
+On success it returns {"ok":true,"id":"...","downloadUrl":"..."} and the app shows on the Apps page immediately.`;
+    navigator.clipboard?.writeText(text)
+      .then(() => { setAiCopied(true); setTimeout(() => setAiCopied(false), 2000); })
       .catch(() => {});
   };
 
@@ -359,6 +380,13 @@ export default function App() {
               <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-indigo-500" /></div>
             ) : (
               <>
+                <button
+                  onClick={copyForAi}
+                  disabled={!publishKey}
+                  className="w-full mb-5 h-12 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium flex items-center justify-center gap-2 transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]"
+                >
+                  <Copy className="w-4 h-4" /> {aiCopied ? 'Copied — paste into any chat' : 'Copy for AI'}
+                </button>
                 <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Publish key</label>
                 <div className="flex gap-2 mt-1 mb-4">
                   <input readOnly value={publishKey || '(not set — add a PUBLISH_KEY secret to the Worker)'} className="flex-1 h-11 px-4 rounded-xl bg-white/5 border border-white/10 text-white text-sm font-mono outline-none truncate" />
