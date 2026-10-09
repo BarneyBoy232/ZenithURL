@@ -334,6 +334,111 @@ On success it returns {"ok":true,"id":"...","downloadUrl":"..."} and the app sho
   const tabClass = (active) =>
     `px-5 py-2 rounded-full text-sm font-medium transition-all ${active ? 'bg-indigo-600 text-white shadow-[0_0_20px_rgba(79,70,229,0.3)]' : 'text-slate-400 hover:text-white'}`;
 
+  // One directory card. Pulled out so the status-grouped sections can each
+  // render the same card without duplicating all of this markup.
+  const renderSiteCard = (page) => {
+    const isDropdownOpen = openDropdown === page.name;
+    const isEditingNote = editingNoteName === page.name;
+    return (
+      <div
+        key={page.id || page.name}
+        className={`group p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)] relative min-w-0 ${isDropdownOpen ? 'z-50' : 'z-0'} ${isAdmin && page.hidden ? 'opacity-60' : ''}`}
+      >
+        <div
+          onClick={() => window.open(`https://${page.name}.zenithurl.com`, '_blank')}
+          className="cursor-pointer flex flex-col gap-4 min-w-0"
+        >
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
+              <ArrowRight className="w-4 h-4 -rotate-45" />
+            </div>
+            <div className="overflow-hidden min-w-0">
+              <h3 className="font-semibold text-lg text-slate-200 truncate group-hover:text-white transition-colors flex items-center gap-2">
+                <span className="truncate">{page.name}</span>
+                {isAdmin && page.hidden && (
+                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-700/60 text-slate-300 border border-white/10">Hidden</span>
+                )}
+              </h3>
+              <p className="text-sm text-slate-500 truncate">{page.name}.zenithurl.com</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <StatusControl
+              status={page.status}
+              isAdmin={isAdmin}
+              isOpen={isDropdownOpen}
+              onToggle={() => setOpenDropdown(isDropdownOpen ? null : page.name)}
+              onClose={() => setOpenDropdown(null)}
+              onSelect={(e, key) => handleStatusChange(e, page.name, key)}
+            />
+            {isAdmin && (
+              <button
+                onClick={(e) => handleToggleHidden(e, page)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-indigo-300 hover:bg-indigo-500/10 transition-all"
+                title={page.hidden ? 'Show to visitors' : 'Hide from visitors'}
+              >
+                {page.hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setEditingNoteName(page.name); setNoteText(page.note || ''); }}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-indigo-300 hover:bg-indigo-500/10 transition-all"
+                title="Edit note"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {page.note && !isEditingNote && (
+          <p className="mt-3 pt-3 border-t border-white/10 text-sm text-slate-400 break-words whitespace-pre-wrap">{page.note}</p>
+        )}
+
+        {isAdmin && isEditingNote && (
+          <div className="mt-3 pt-3 border-t border-white/10">
+            <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              placeholder="Note (shown under this site)..."
+              rows={2}
+              className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 outline-none focus:border-indigo-400/50 transition-all resize-y"
+            />
+            <div className="flex justify-end gap-2 mt-2">
+              <button
+                onClick={() => { setEditingNoteName(null); setNoteText(''); }}
+                className="px-4 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 text-sm font-medium transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleSaveNote(page.name)}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Directory split into status sections. Hidden sites (admin-only) get their
+  // own section regardless of status; everything else falls under its status.
+  const siteGroups = [
+    { key: 'finished', label: 'Finished', dot: 'bg-emerald-400' },
+    { key: 'unfinished', label: 'Unfinished', dot: 'bg-rose-400' },
+    { key: 'on_hold', label: 'On Hold', dot: 'bg-amber-400' },
+    { key: 'hidden', label: 'Hidden', dot: 'bg-slate-400' }
+  ].map(g => ({ ...g, items: [] }));
+  visiblePages.forEach((p) => {
+    if (isAdmin && p.hidden) siteGroups[3].items.push(p);
+    else (siteGroups.find(g => g.key === p.status) || siteGroups[1]).items.push(p);
+  });
+
   return (
     <div className="min-h-screen bg-[linear-gradient(165deg,#3a1d76_0%,#271658_40%,#160e36_100%)] bg-fixed text-slate-100 pb-32 font-sans selection:bg-indigo-500/30">
 
@@ -507,96 +612,19 @@ On success it returns {"ok":true,"id":"...","downloadUrl":"..."} and the app sho
             {isLoading ? (
               <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-                {visiblePages.map((page) => {
-                  const isDropdownOpen = openDropdown === page.name;
-                  const isEditingNote = editingNoteName === page.name;
-                  return (
-                    <div
-                      key={page.id || page.name}
-                      className={`group p-5 bg-white/5 backdrop-blur-md rounded-2xl border border-white/10 hover:border-indigo-500/50 hover:bg-white/10 transition-all duration-300 hover:shadow-[0_8px_30px_rgba(79,70,229,0.1)] relative min-w-0 ${isDropdownOpen ? 'z-50' : 'z-0'} ${isAdmin && page.hidden ? 'opacity-60' : ''}`}
-                    >
-                      <div
-                        onClick={() => window.open(`https://${page.name}.zenithurl.com`, '_blank')}
-                        className="cursor-pointer flex flex-col gap-4 min-w-0"
-                      >
-                        <div className="flex items-center gap-4 min-w-0">
-                          <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
-                            <ArrowRight className="w-4 h-4 -rotate-45" />
-                          </div>
-                          <div className="overflow-hidden min-w-0">
-                            <h3 className="font-semibold text-lg text-slate-200 truncate group-hover:text-white transition-colors flex items-center gap-2">
-                              <span className="truncate">{page.name}</span>
-                              {isAdmin && page.hidden && (
-                                <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-700/60 text-slate-300 border border-white/10">Hidden</span>
-                              )}
-                            </h3>
-                            <p className="text-sm text-slate-500 truncate">{page.name}.zenithurl.com</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3 shrink-0">
-                          <StatusControl
-                            status={page.status}
-                            isAdmin={isAdmin}
-                            isOpen={isDropdownOpen}
-                            onToggle={() => setOpenDropdown(isDropdownOpen ? null : page.name)}
-                            onClose={() => setOpenDropdown(null)}
-                            onSelect={(e, key) => handleStatusChange(e, page.name, key)}
-                          />
-                          {isAdmin && (
-                            <button
-                              onClick={(e) => handleToggleHidden(e, page)}
-                              className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-indigo-300 hover:bg-indigo-500/10 transition-all"
-                              title={page.hidden ? 'Show to visitors' : 'Hide from visitors'}
-                            >
-                              {page.hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                          )}
-                          {isAdmin && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setEditingNoteName(page.name); setNoteText(page.note || ''); }}
-                              className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-indigo-300 hover:bg-indigo-500/10 transition-all"
-                              title="Edit note"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {page.note && !isEditingNote && (
-                        <p className="mt-3 pt-3 border-t border-white/10 text-sm text-slate-400 break-words whitespace-pre-wrap">{page.note}</p>
-                      )}
-
-                      {isAdmin && isEditingNote && (
-                        <div className="mt-3 pt-3 border-t border-white/10">
-                          <textarea
-                            value={noteText}
-                            onChange={(e) => setNoteText(e.target.value)}
-                            placeholder="Note (shown under this site)..."
-                            rows={2}
-                            className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500 outline-none focus:border-indigo-400/50 transition-all resize-y"
-                          />
-                          <div className="flex justify-end gap-2 mt-2">
-                            <button
-                              onClick={() => { setEditingNoteName(null); setNoteText(''); }}
-                              className="px-4 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 text-sm font-medium transition-all"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => handleSaveNote(page.name)}
-                              className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-all shadow-[0_0_20px_rgba(79,70,229,0.3)]"
-                            >
-                              Save
-                            </button>
-                          </div>
-                        </div>
-                      )}
+              <div className="space-y-10">
+                {siteGroups.filter(g => g.items.length > 0).map((group) => (
+                  <section key={group.key}>
+                    <div className="flex items-center gap-2.5 mb-4">
+                      <div className={`w-2 h-2 rounded-full ${group.dot}`} />
+                      <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">{group.label}</h3>
+                      <span className="text-xs text-slate-500">{group.items.length}</span>
                     </div>
-                  );
-                })}
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                      {group.items.map(renderSiteCard)}
+                    </div>
+                  </section>
+                ))}
               </div>
             )}
           </>
