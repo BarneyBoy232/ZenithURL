@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, CheckCircle2, XCircle, ArrowRight, Check, Clock, Loader2, PlusCircle, Globe, Sparkles, AppWindow, Download, Upload, Trash2, LogIn, LogOut, ShieldCheck, Pencil, Eye, EyeOff, KeyRound, Copy } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, ArrowRight, Check, Clock, Loader2, PlusCircle, Globe, AppWindow, Download, Upload, Trash2, LogIn, LogOut, ShieldCheck, Pencil, Eye, EyeOff, KeyRound, Copy } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -335,12 +335,7 @@ On success it returns {"ok":true,"id":"...","downloadUrl":"..."} and the app sho
     `px-5 py-2 rounded-full text-sm font-medium transition-all ${active ? 'bg-indigo-600 text-white shadow-[0_0_20px_rgba(79,70,229,0.3)]' : 'text-slate-400 hover:text-white'}`;
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-900 via-slate-950 to-black text-slate-100 pb-32 font-sans selection:bg-indigo-500/30">
-
-      {/* Decorative background elements */}
-      <div className="absolute top-0 left-0 right-0 h-[500px] bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none" />
-      <div className="absolute top-20 left-1/4 w-72 h-72 bg-purple-500/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute top-40 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
+    <div className="min-h-screen bg-[linear-gradient(165deg,#3a1d76_0%,#271658_40%,#160e36_100%)] bg-fixed text-slate-100 pb-32 font-sans selection:bg-indigo-500/30">
 
       {/* Admin sign-in / status bar */}
       <div className="absolute top-4 right-4 z-30 flex items-center gap-2">
@@ -406,10 +401,9 @@ On success it returns {"ok":true,"id":"...","downloadUrl":"..."} and the app sho
       )}
 
       <header className="pt-24 pb-10 px-6 flex flex-col items-center text-center relative z-10">
-        <div className="flex items-center gap-3 mb-8">
-          <Sparkles className="w-8 h-8 text-indigo-400" />
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-300 via-purple-300 to-indigo-300">
-            ZenithURL
+        <div className="mb-8">
+          <h1 className="text-5xl md:text-6xl font-semibold tracking-tight text-white">
+            zenith<span className="text-indigo-300">url</span>
           </h1>
         </div>
 
@@ -497,7 +491,7 @@ On success it returns {"ok":true,"id":"...","downloadUrl":"..."} and the app sho
         )}
       </header>
 
-      <main className="max-w-3xl mx-auto px-6 relative">
+      <main className="max-w-7xl mx-auto px-6 relative">
         {view === 'sites' ? (
           <>
             <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
@@ -513,7 +507,7 @@ On success it returns {"ok":true,"id":"...","downloadUrl":"..."} and the app sho
             {isLoading ? (
               <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
             ) : (
-              <div className="grid gap-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {visiblePages.map((page) => {
                   const isDropdownOpen = openDropdown === page.name;
                   const isEditingNote = editingNoteName === page.name;
@@ -524,7 +518,7 @@ On success it returns {"ok":true,"id":"...","downloadUrl":"..."} and the app sho
                     >
                       <div
                         onClick={() => window.open(`https://${page.name}.zenithurl.com`, '_blank')}
-                        className="cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-0"
+                        className="cursor-pointer flex flex-col gap-4 min-w-0"
                       >
                         <div className="flex items-center gap-4 min-w-0">
                           <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
@@ -541,7 +535,7 @@ On success it returns {"ok":true,"id":"...","downloadUrl":"..."} and the app sho
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3 sm:ml-auto shrink-0">
+                        <div className="flex items-center gap-3 shrink-0">
                           <StatusControl
                             status={page.status}
                             isAdmin={isAdmin}
@@ -765,7 +759,7 @@ function AppsView({ isAdmin }) {
 
       {/* Admin add / edit form */}
       {isAdmin && showForm && (
-        <form onSubmit={handleSubmit} className="mb-6 p-5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md flex flex-col gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+        <form onSubmit={handleSubmit} className="mb-6 max-w-2xl p-5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md flex flex-col gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-300">{editingId ? 'Edit app' : 'Add app'}</h3>
             <button type="button" onClick={resetForm} className="text-slate-500 hover:text-white text-sm transition-colors">Cancel</button>
@@ -826,7 +820,7 @@ function AppsView({ isAdmin }) {
       ) : apps.length === 0 ? (
         <div className="text-center py-12 text-slate-500">No apps yet.</div>
       ) : (
-        <div className="grid gap-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {apps.map((appRow) => {
             const isDropdownOpen = openDropdown === appRow.id;
             return (
@@ -836,9 +830,9 @@ function AppsView({ isAdmin }) {
               >
                 <div
                   onClick={() => appRow.fileUrl && window.open(appRow.fileUrl, '_blank')}
-                  className="cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4 min-w-0"
+                  className="cursor-pointer flex flex-col gap-4 min-w-0"
                 >
-                  <div className="flex items-center gap-4 min-w-0">
+                  <div className="flex items-start gap-4 min-w-0">
                     <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 text-indigo-400 shrink-0 group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300">
                       <Download className="w-4 h-4" />
                     </div>
@@ -854,7 +848,7 @@ function AppsView({ isAdmin }) {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 sm:ml-auto shrink-0">
+                  <div className="flex items-center gap-3 shrink-0">
                     <StatusControl
                       status={appRow.status}
                       isAdmin={isAdmin}
