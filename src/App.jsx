@@ -429,14 +429,17 @@ On success it returns {"ok":true,"id":"...","downloadUrl":"..."} and the app sho
   // Directory split into status sections. Hidden sites (admin-only) get their
   // own section regardless of status; everything else falls under its status.
   const siteGroups = [
-    { key: 'finished', label: 'Finished', dot: 'bg-emerald-400' },
-    { key: 'unfinished', label: 'Unfinished', dot: 'bg-rose-400' },
-    { key: 'on_hold', label: 'On Hold', dot: 'bg-amber-400' },
-    { key: 'hidden', label: 'Hidden', dot: 'bg-slate-400' }
+    { key: 'finished', label: STATUS_CONFIG.finished.label, dot: STATUS_CONFIG.finished.color },
+    { key: 'unfinished', label: STATUS_CONFIG.unfinished.label, dot: STATUS_CONFIG.unfinished.color },
+    { key: 'on_hold', label: STATUS_CONFIG.on_hold.label, dot: STATUS_CONFIG.on_hold.color },
+    // Keyed '__hidden' (not 'hidden') so a site whose status value happened to
+    // be 'hidden' can't land in this admin-only section via the status match.
+    { key: '__hidden', label: 'Hidden', dot: 'bg-slate-500' }
   ].map(g => ({ ...g, items: [] }));
+  const statusGroups = siteGroups.slice(0, 3);
   visiblePages.forEach((p) => {
     if (isAdmin && p.hidden) siteGroups[3].items.push(p);
-    else (siteGroups.find(g => g.key === p.status) || siteGroups[1]).items.push(p);
+    else (statusGroups.find(g => g.key === p.status) || siteGroups[1]).items.push(p);
   });
 
   return (
@@ -596,7 +599,7 @@ On success it returns {"ok":true,"id":"...","downloadUrl":"..."} and the app sho
         )}
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 relative">
+      <main className="max-w-7xl 2xl:max-w-[1760px] mx-auto px-6 relative">
         {view === 'sites' ? (
           <>
             <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
@@ -617,10 +620,10 @@ On success it returns {"ok":true,"id":"...","downloadUrl":"..."} and the app sho
                   <section key={group.key}>
                     <div className="flex items-center gap-2.5 mb-4">
                       <div className={`w-2 h-2 rounded-full ${group.dot}`} />
-                      <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">{group.label}</h3>
-                      <span className="text-xs text-slate-500">{group.items.length}</span>
+                      <h3 className={`text-sm font-semibold uppercase tracking-wider ${group.key === '__hidden' ? 'text-slate-500' : 'text-slate-300'}`}>{group.key === '__hidden' ? 'Hidden from visitors' : group.label}</h3>
+                      <span className="text-xs text-slate-600">{group.items.length}</span>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
                       {group.items.map(renderSiteCard)}
                     </div>
                   </section>
@@ -838,7 +841,6 @@ function AppsView({ isAdmin }) {
                 : editingId ? <><Check className="w-4 h-4" /> Save</> : <><Upload className="w-4 h-4" /> Upload</>}
             </button>
           </div>
-          {editingId && !file && <p className="text-xs text-slate-500">Leave the file empty to keep the current installer.</p>}
           {uploadError && <p className="text-sm text-rose-300">{uploadError}</p>}
         </form>
       )}
@@ -848,7 +850,7 @@ function AppsView({ isAdmin }) {
       ) : apps.length === 0 ? (
         <div className="text-center py-12 text-slate-500">No apps yet.</div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 min-[1800px]:grid-cols-5">
           {apps.map((appRow) => {
             const isDropdownOpen = openDropdown === appRow.id;
             return (
