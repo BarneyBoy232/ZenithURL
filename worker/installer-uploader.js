@@ -127,25 +127,54 @@ async function getAccessToken(env) {
   if (!res.ok) throw new Error(`Token exchange failed (${res.status}): ${await res.text()}`);
   return (await res.json()).access_token;
 }
-async function writeAppDoc(env, id, d) {
-  const token = await getAccessToken(env);
+// A stable doc id derived from the app name, so publishing the same name twice
+// lands on the SAME document (replace) instead of creating a duplicate.
+function slugifyName(name) {
+  return name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '') || 'app';
+}
+function appDocPath(id) {
+  return `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/artifacts/zenithurl/public/data/apps/${encodeURIComponent(id)}`;
+}
+
+// Read an existing listing (or null if there isn't one). Used so /publish can
+// replace the previous entry and reuse its status/created time.
+async function getAppDoc(token, id) {
+  const res = await fetch(`https://firestore.googleapis.com/v1/${appDocPath(id)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Firestore read failed (${res.status}): ${await res.text()}`);
+  const f = (await res.json()).fields || {};
+  return {
+    assetId: f.assetId ? f.assetId.integerValue : null,
+    status: f.status ? f.status.stringValue : null,
+    createdAt: f.createdAt ? f.createdAt.integerValue : null,
+  };
+}
+
+// Create-or-overwrite the listing at a stable id (PATCH upserts the document).
+async function writeAppDoc(token, id, d) {
   const fields = {
     name: { stringValue: d.name },
     description: { stringValue: d.description || '' },
     platform: { stringValue: d.platform || 'Other' },
-    status: { stringValue: 'finished' },
+    status: { stringValue: d.status || 'finished' },
     fileUrl: { stringValue: d.fileUrl },
     fileName: { stringValue: d.fileName },
     assetId: { integerValue: String(d.assetId) },
     size: { integerValue: String(d.size) },
-    createdAt: { integerValue: String(Date.now()) },
+    createdAt: { integerValue: String(d.createdAt || Date.now()) },
   };
-  const docs = `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/artifacts/zenithurl/public/data/apps`;
-  const res = await fetch(`https://firestore.googleapis.com/v1/${docs}?documentId=${encodeURIComponent(id)}`, {
-    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+  const res = await fetch(`https://firestore.googleapis.com/v1/${appDocPath(id)}`, {
+    method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields }),
   });
   if (!res.ok) throw new Error(`Firestore write failed (${res.status}): ${await res.text()}`);
+}
+
+async function deleteReleaseAsset(env, assetId) {
+  const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/releases/assets/${assetId}`, { method: 'DELETE', headers: gh(env) });
+  if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
 }
 
 // --- handlers ---
@@ -156,8 +185,7 @@ async function handleUpload(request, url, env) {
 async function handleDelete(url, env) {
   const assetId = url.searchParams.get('assetId');
   if (!assetId) throw new Error('Missing assetId');
-  const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/releases/assets/${assetId}`, { method: 'DELETE', headers: gh(env) });
-  if (!res.ok && res.status !== 404) throw new Error(`Delete failed (${res.status})`);
+  await deleteReleaseAsset(env, assetId);
   return json({ ok: true });
 }
 async function handlePublish(request, url, env) {
@@ -169,10 +197,23 @@ async function handlePublish(request, url, env) {
   const bytes = await request.arrayBuffer();
   if (!bytes.byteLength) throw new Error('Empty body — send the installer file as the request body');
 
+  // Same name -> same document id -> replace the existing app instead of duplicating it.
+  const id = slugifyName(name);
+  const token = await getAccessToken(env);
+  const existing = await getAppDoc(token, id);
+
   const uploaded = await uploadToGitHub(bytes, filename, env);
-  const id = `${name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-')}-${Date.now()}`;
-  await writeAppDoc(env, id, { name, description, platform, fileUrl: uploaded.downloadUrl, fileName: filename, assetId: uploaded.assetId, size: uploaded.size });
-  return json({ ok: true, id, downloadUrl: uploaded.downloadUrl });
+  await writeAppDoc(token, id, {
+    name, description, platform,
+    fileUrl: uploaded.downloadUrl, fileName: filename, assetId: uploaded.assetId, size: uploaded.size,
+    status: (existing && existing.status) || 'finished',      // keep the admin's status on replace
+    createdAt: (existing && existing.createdAt) || Date.now(), // keep its place in the list on replace
+  });
+  // Remove the previous installer file so a replace doesn't leave an orphan behind.
+  if (existing && existing.assetId && String(existing.assetId) !== String(uploaded.assetId)) {
+    await deleteReleaseAsset(env, existing.assetId).catch(() => {});
+  }
+  return json({ ok: true, id, downloadUrl: uploaded.downloadUrl, replaced: !!existing });
 }
 
 export default {
