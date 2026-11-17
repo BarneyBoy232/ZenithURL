@@ -149,6 +149,8 @@ async function getAppDoc(token, id) {
     assetId: f.assetId ? f.assetId.integerValue : null,
     status: f.status ? f.status.stringValue : null,
     createdAt: f.createdAt ? f.createdAt.integerValue : null,
+    description: f.description ? f.description.stringValue : null,
+    platform: f.platform ? f.platform.stringValue : null,
   };
 }
 
@@ -191,8 +193,6 @@ async function handleDelete(url, env) {
 async function handlePublish(request, url, env) {
   const name = (url.searchParams.get('name') || '').trim();
   if (!name) throw new Error('Missing ?name=');
-  const platform = url.searchParams.get('platform') || 'Other';
-  const description = url.searchParams.get('description') || '';
   const filename = url.searchParams.get('filename') || `${name}.bin`;
   const bytes = await request.arrayBuffer();
   if (!bytes.byteLength) throw new Error('Empty body — send the installer file as the request body');
@@ -201,6 +201,15 @@ async function handlePublish(request, url, env) {
   const id = slugifyName(name);
   const token = await getAccessToken(env);
   const existing = await getAppDoc(token, id);
+
+  // On a replace, only overwrite description/platform if this request actually
+  // supplied them — so a binary-only re-publish keeps the admin's existing text.
+  const description = url.searchParams.has('description')
+    ? url.searchParams.get('description')
+    : (existing && existing.description) || '';
+  const platform = url.searchParams.has('platform')
+    ? (url.searchParams.get('platform') || 'Other')
+    : (existing && existing.platform) || 'Other';
 
   const uploaded = await uploadToGitHub(bytes, filename, env);
   await writeAppDoc(token, id, {
